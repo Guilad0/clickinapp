@@ -1,0 +1,211 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String       @map("password_hash")
+  name         String?
+  avatarUrl    String?      @map("avatar_url")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  tenantUsers  TenantUser[]
+  blogPosts    BlogPost[]
+  pages        Page[]
+  pageVersions PageVersion[]
+  assets       Asset[]
+
+  @@map("users")
+}
+
+model Tenant {
+  id              String    @id @default(cuid())
+  name            String
+  logoUrl         String?   @map("logo_url")
+  primaryColor    String?   @default("#2563eb") @map("primary_color")
+  secondaryColor  String?   @default("#f59e0b") @map("secondary_color")
+  fontPreference  String?   @default("inter") @map("font_preference")
+  defaultLanguage String    @default("es") @map("default_language")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tenantUsers     TenantUser[]
+  sites           Site[]
+
+  @@map("tenants")
+}
+
+model TenantUser {
+  id       String   @id @default(cuid())
+  tenantId String   @map("tenant_id")
+  userId   String   @map("user_id")
+  role     Role     @default(EDITOR)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@map("tenant_users")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+model Site {
+  id              String    @id @default(cuid())
+  tenantId        String    @map("tenant_id")
+  domain          String?
+  subdomain       String
+  defaultLanguage String    @default("es") @map("default_language")
+  status          SiteStatus @default(DRAFT)
+  publishedAt     DateTime?  @map("published_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pages           Page[]
+  blogPosts       BlogPost[]
+  blogCategories  BlogCategory[]
+  assets          Asset[]
+
+  @@unique([tenantId])
+  @@map("sites")
+}
+
+enum SiteStatus {
+  DRAFT
+  PUBLISHED
+  SUSPENDED
+}
+
+model Page {
+  id          String     @id @default(cuid())
+  siteId      String     @map("site_id")
+  parentId    String?    @map("parent_id")
+  title       String
+  slug        String
+  status      PageStatus @default(DRAFT)
+  language    String     @default("es")
+  blocksJson  Json?      @map("blocks_json")
+  seoJson     Json?      @map("seo_json")
+  sortOrder   Int        @default(0) @map("sort_order")
+  createdBy   String?    @map("created_by")
+  publishedAt DateTime?  @map("published_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  site        Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  parent      Page?       @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Page[]      @relation("PageHierarchy")
+  versions    PageVersion[]
+  author      User?       @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([siteId, slug, language])
+  @@map("pages")
+}
+
+enum PageStatus {
+  DRAFT
+  PUBLISHED
+  PENDING_CHANGES
+  ERROR
+}
+
+model PageVersion {
+  id          String   @id @default(cuid())
+  pageId      String   @map("page_id")
+  blocksJson  Json?    @map("blocks_json")
+  seoJson     Json?    @map("seo_json")
+  publishedBy String?  @map("published_by")
+  publishedAt DateTime @default(now()) @map("published_at")
+
+  page        Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  publisher   User?    @relation(fields: [publishedBy], references: [id], onDelete: SetNull)
+
+  @@map("page_versions")
+}
+
+model BlogPost {
+  id               String    @id @default(cuid())
+  siteId           String    @map("site_id")
+  title            String
+  slug             String
+  excerpt          String?
+  contentHtml      String?   @map("content_html")
+  featuredImageUrl String?   @map("featured_image_url")
+  categoryId       String?   @map("category_id")
+  authorId         String?   @map("author_id")
+  status           BlogPostStatus @default(DRAFT)
+  language         String    @default("es")
+  seoJson          Json?     @map("seo_json")
+  tags             Json?     @default("[]")
+  scheduledAt      DateTime? @map("scheduled_at")
+  publishedAt      DateTime? @map("published_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  site             Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  category         BlogCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  author           User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([siteId, slug, language])
+  @@map("blog_posts")
+}
+
+enum BlogPostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+}
+
+model BlogCategory {
+  id     String     @id @default(cuid())
+  siteId String     @map("site_id")
+  name   String
+  slug   String
+
+  site   Site       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  posts  BlogPost[]
+
+  @@unique([siteId, slug])
+  @@map("blog_categories")
+}
+
+model Asset {
+  id         String   @id @default(cuid())
+  siteId     String   @map("site_id")
+  url        String
+  alt        String?
+  fileType   String?  @map("file_type")
+  fileSize   Int?     @map("file_size")
+  uploadedBy String?  @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  site       Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  uploader   User?    @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
+
+  @@map("assets")
+}
+
+model BlockType {
+  id               String @id @default(cuid())
+  name             String @unique
+  category         String
+  icon             String @default("box")
+  defaultPropsJson Json?  @map("default_props_json")
+  propsSchemaJson  Json?  @map("props_schema_json")
+
+  @@map("block_types")
+}
